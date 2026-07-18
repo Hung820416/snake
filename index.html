@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <!-- 這行是手機網頁的關鍵：防止玩家在遊玩時畫面縮放、亂滾動 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>手機流暢版貪吃蛇</title>
+    <style>
+        /* CSS：讓遊戲在手機上漂亮的居中排版 */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden; /* 防止手機瀏覽器亂滾動 */
+            /* 禁止手機長按彈出選單或反白 */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #score-board {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            transition: all 0.1s ease; /* 讓分數變大時有流暢動畫 */
+        }
+
+        /* 當分數被加上 .pulse 標籤時，會放大並變成金色 */
+        #score-board.pulse {
+            color: #FFD700;
+            transform: scale(1.3);
+        }
+
+        canvas {
+            background-color: #111;
+            border: 2px solid #333;
+            box-shadow: 0 0 20px rgba(0, 150, 255, 0.3);
+            max-width: 95vw; /* 適應不同手機螢幕寬度 */
+            max-height: 70vh;
+        }
+
+        #hint {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #888;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="score-board">Score: 0</div>
+    <canvas id="gameCanvas" width="500" height="500"></canvas>
+    <div id="hint">📱 手機：在畫面上隨意「往上下左右滑動」控制<br>💻 電腦：使用鍵盤方向鍵控制</div>
+
+    <script>
+        // JavaScript：遊戲邏輯核心
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreBoard = document.getElementById("score-board");
+
+        // 遊戲核心變數（跟 Python 完全對應！）
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+        
+        let snakeX = 250;
+        let snakeY = 250;
+        let snakeBody = [[250, 250], [240, 250], [230, 250], [220, 250]];
+        
+        const MOVE_SPEED = 4;
+        let velocityX = MOVE_SPEED;
+        let velocityY = 0;
+        
+        let foodX = Math.random() * (WIDTH - 40) + 20;
+        let foodY = Math.random() * (HEIGHT - 40) + 20;
+        
+        let score = 0;
+        let gameOver = false;
+        let animationFrame = 0;
+
+        // --- 📱 手機滑動偵測（Swipe）變數 ---
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        // 監聽手機手指碰到螢幕的瞬間
+        window.addEventListener("touchstart", function(e) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            
+            // 如果死掉了，在手機上點一下螢幕就重來
+            if (gameOver) restartGame();
+        }, { passive: false });
+
+        // 監聽手機手指離開螢幕的瞬間，計算滑動方向
+        window.addEventListener("touchend", function(e) {
+            let touchEndX = e.changedTouches[0].clientX;
+            let touchEndY = e.changedTouches[0].clientY;
+            
+            let diffX = touchEndX - touchStartX;
+            let diffY = touchEndY - touchStartY;
+            
+            // 判斷玩家是橫著滑還是直著滑（看哪邊的滑動距離比較長）
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                // 橫向滑動
+                if (diffX > 30 && velocityX === 0) { // 往右滑
+                    velocityX = MOVE_SPEED; velocityY = 0;
+                } else if (diffX < -30 && velocityX === 0) { // 往左滑
+                    velocityX = -MOVE_SPEED; velocityY = 0;
+                }
+            } else {
+                // 縱向滑動
+                if (diffY > 30 && velocityY === 0) { // 往下滑
+                    velocityX = 0; velocityY = MOVE_SPEED;
+                } else if (diffY < -30 && velocityY === 0) { // 往上滑
+                    velocityX = 0; velocityY = -MOVE_SPEED;
+                }
+            }
+        }, { passive: false });
+
+        // --- 💻 電腦鍵盤相容監聽 ---
+        window.addEventListener("keydown", function(e) {
+            if (gameOver) {
+                restartGame();
+                return;
+            }
+            if (e.key === "ArrowUp" && velocityY === 0) { velocityX = 0; velocityY = -MOVE_SPEED; }
+            else if (e.key === "ArrowDown" && velocityY === 0) { velocityX = 0; velocityY = MOVE_SPEED; }
+            else if (e.key === "ArrowLeft" && velocityX === 0) { velocityX = -MOVE_SPEED; velocityY = 0; }
+            else if (e.key === "ArrowRight" && velocityX === 0) { velocityX = MOVE_SPEED; velocityY = 0; }
+        });
+
+        // 重新開始遊戲
+        function restartGame() {
+            snakeX = 250; snakeY = 250;
+            snakeBody = [[250, 250], [240, 250], [230, 250], [220, 250]];
+            velocityX = MOVE_SPEED; velocityY = 0;
+            foodX = Math.random() * (WIDTH - 40) + 20;
+            foodY = Math.random() * (HEIGHT - 40) + 20;
+            score = 0;
+            scoreBoard.innerText = "Score: " + score;
+            gameOver = false;
+        }
+
+        // 🔄 網頁版主迴圈 (每秒自動執行 60 次)
+        function gameLoop() {
+            animationFrame++;
+            
+            if (!gameOver) {
+                // 更新位置
+                snakeX += velocityX;
+                snakeY += velocityY;
+                snakeBody.unshift([snakeX, snakeY]); // 等同於 Python 的 insert(0, ...)
+                
+                // 算距離（碰撞偵測）
+                let dist = Math.sqrt(Math.pow(snakeX - foodX, 2) + Math.pow(snakeY - foodY, 2));
+                if (dist < 18) {
+                    score += 10;
+                    scoreBoard.innerText = "Score: " + score;
+                    
+                    // ✨ 觸發分數放大動畫
+                    scoreBoard.classList.add("pulse");
+                    setTimeout(() => scoreBoard.classList.remove("pulse"), 150); // 0.15 秒後縮小
+                    
+                    foodX = Math.random() * (WIDTH - 40) + 20;
+                    foodY = Math.random() * (HEIGHT - 40) + 20;
+                } else {
+                    let maxLength = 4 + Math.floor(score / 10) * 5;
+                    while (snakeBody.length > maxLength) {
+                        snakeBody.pop();
+                    }
+                }
+                
+                // 檢查死掉（撞牆或撞自己）
+                if (snakeX < 0 || snakeX > WIDTH || snakeY < 0 || snakeY > HEIGHT) gameOver = true;
+                
+                for (let i = 15; i < snakeBody.length; i++) {
+                    let bodyDist = Math.sqrt(Math.pow(snakeX - snakeBody[i][0], 2) + Math.pow(snakeY - snakeBody[i][1], 2));
+                    if (bodyDist < 5) gameOver = true;
+                }
+            }
+
+            // 🎨 繪製畫面
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+            if (!gameOver) {
+                // 畫身體（亮藍色）
+                ctx.fillStyle = "#00C8FF";
+                for (let i = 1; i < snakeBody.length; i++) {
+                    ctx.beginPath();
+                    ctx.arc(snakeBody[i][0], snakeBody[i][1], 8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                // 畫蛇頭（深藍色且稍大）
+                ctx.fillStyle = "#0096FF";
+                ctx.beginPath();
+                ctx.arc(snakeX, snakeY, 10, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 畫食物（呼吸燈特效，利用 Math.sin 縮放半徑）
+                let pulseRadius = 8 + 2 * Math.sin(animationFrame * 0.1);
+                ctx.fillStyle = "#FF5050";
+                ctx.beginPath();
+                ctx.arc(foodX, foodY, pulseRadius, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                // 遊戲結束畫面
+                ctx.fillStyle = "#FF5050";
+                ctx.font = "bold 30px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("GAME OVER! Score: " + score, WIDTH / 2, HEIGHT / 2 - 15);
+                
+                ctx.fillStyle = "#FFFFFF";
+                ctx.font = "20px Arial";
+                ctx.fillText("Tap Screen / Press Any Key to Restart", WIDTH / 2, HEIGHT / 2 + 25);
+            }
+
+            // 請瀏覽器在下一幀繼續執行 gameLoop (達到完美的 60FPS)
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 啟動遊戲！
+        gameLoop();
+    </script>
+</body>
+</html>
